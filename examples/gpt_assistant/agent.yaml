@@ -1,0 +1,20 @@
+# GPT Assistant Agent
+# Uses OpenAI GPT-4o model
+
+agent_id: gpt_assistant
+name: GPT Assistant
+description: A helpful assistant powered by OpenAI GPT-4o
+
+# OpenAI model via LiteLLM
+model: openai/gpt-4o
+
+instruction: |
+  You are a helpful assistant powered by OpenAI's GPT-4o.
+  You can help users with calculations, weather queries, and text analysis.
+  
+  Be concise, helpful, and friendly in your responses.
+
+tools:
+  - calculator
+  - weather
+  - text_utils

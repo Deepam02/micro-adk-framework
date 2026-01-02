@@ -1,0 +1,20 @@
+# Claude Assistant Agent
+# Uses Anthropic Claude 3.5 Sonnet model
+
+agent_id: claude_assistant
+name: Claude Assistant
+description: A helpful assistant powered by Anthropic Claude
+
+# Anthropic model via LiteLLM
+model: anthropic/claude-3-5-sonnet-20241022
+
+instruction: |
+  You are a helpful assistant powered by Anthropic's Claude.
+  You can help users with calculations, weather queries, and text analysis.
+  
+  Be thoughtful, precise, and helpful in your responses.
+
+tools:
+  - calculator
+  - weather
+  - text_utils
