@@ -1,0 +1,84 @@
+# Tool Manifest
+# 
+# This file defines the containerized tools available to agents.
+# Each tool runs as a separate microservice with a /invoke endpoint.
+#
+# Schema:
+#   tool_id: Unique identifier for the tool
+#   name: Human-readable name
+#   description: Description for the LLM
+#   image: Docker image for the tool
+#   port: Container port for the service
+#   schema: JSON Schema for tool arguments
+#   autoscaling: HPA configuration
+
+tools:
+  # =========================================================================
+  # Calculator Tool
+  # =========================================================================
+  - tool_id: calculator
+    name: calculator
+    description: |
+      A calculator tool that performs basic arithmetic operations.
+      Supports: add, subtract, multiply, divide, power, modulo.
+    image: micro-adk/tool-calculator:latest
+    port: 8080
+    health_check_path: /health
+    
+    schema:
+      operation:
+        type: string
+        description: "The operation to perform: add, subtract, multiply, divide, power, modulo"
+        enum: ["add", "subtract", "multiply", "divide", "power", "modulo"]
+      a:
+        type: number
+        description: The first operand
+      b:
+        type: number
+        description: The second operand
+    
+    resources:
+      cpu_request: "50m"
+      cpu_limit: "200m"
+      memory_request: "64Mi"
+      memory_limit: "128Mi"
+    
+    autoscaling:
+      enabled: true
+      min_replicas: 1
+      max_replicas: 5
+      target_cpu_percent: 80
+
+  # =========================================================================
+  # Weather Tool
+  # =========================================================================
+  - tool_id: weather
+    name: get_weather
+    description: |
+      Get current weather information for a location.
+      Returns temperature, conditions, and humidity.
+    image: micro-adk/tool-weather:latest
+    port: 8080
+    health_check_path: /health
+    
+    schema:
+      location:
+        type: string
+        description: The city name to get weather for
+      unit:
+        type: string
+        description: Temperature unit (celsius or fahrenheit)
+        enum: ["celsius", "fahrenheit"]
+        default: "fahrenheit"
+    
+    resources:
+      cpu_request: "50m"
+      cpu_limit: "200m"
+      memory_request: "64Mi"
+      memory_limit: "128Mi"
+    
+    autoscaling:
+      enabled: true
+      min_replicas: 1
+      max_replicas: 3
+      target_cpu_percent: 80

@@ -1,0 +1,38 @@
+# Assistant Agent Configuration
+#
+# This is a sample agent that demonstrates how to configure
+# an agent with containerized tools.
+
+agent_id: assistant
+name: Assistant Agent
+description: A helpful assistant with calculator and weather capabilities
+
+# LLM model to use (via LiteLLM)
+# Format: provider/model (e.g., gemini/gemini-2.0-flash, openai/gpt-4)
+model: gemini/gemini-2.5-flash
+
+# System instruction for the agent
+instruction: |
+  You are a helpful assistant. You can help users with various tasks:
+  
+  1. Mathematical calculations - Use the calculator tool for arithmetic operations
+     like addition, subtraction, multiplication, division, powers, and modulo.
+  
+  2. Weather information - Use the weather tool to get current weather
+     conditions for any city.
+  
+  Always be friendly and helpful. When performing calculations or getting
+  weather, explain what you're doing and present the results clearly.
+
+# Tools available to this agent (from the tool manifest)
+tools:
+  - calculator
+  - weather
+
+# Optional: Sub-agents for multi-agent workflows
+sub_agents: []
+
+# Optional: Custom generate_content_config
+# generate_content_config:
+#   temperature: 0.7
+#   max_output_tokens: 1024

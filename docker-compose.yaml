@@ -1,0 +1,94 @@
+# Docker Compose for Micro ADK Framework
+# Local development environment
+#
+# Usage:
+#   docker-compose up -d                    # Start all services
+#   docker-compose up -d --build            # Rebuild and start
+#   docker-compose logs -f runtime          # Follow runtime logs
+#   docker-compose down                     # Stop all services
+#   docker-compose down -v                  # Stop and remove volumes
+
+services:
+  # ==========================================================================
+  # Core Infrastructure
+  # ==========================================================================
+  
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: micro_adk
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================================
+  # Agent Runtime
+  # ==========================================================================
+  
+  runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      - MICRO_ADK_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-micro_adk}
+      - MICRO_ADK_AGENTS_DIR=/app/agents
+      - MICRO_ADK_TOOLS_MANIFEST=/app/tools/manifest.yaml
+      - MICRO_ADK_CONFIG_PATH=${MICRO_ADK_CONFIG_PATH:-/app/config/config.yaml}
+      # LiteLLM configuration - Provider API keys (from .env file)
+      - GEMINI_API_KEY=${GEMINI_API_KEY:?Please set GEMINI_API_KEY in .env file}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./agents:/app/agents
+      - ./tools:/app/tools:ro
+      - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ==========================================================================
+  # Sample Tools
+  # ==========================================================================
+  
+  tool-calculator:
+    build:
+      context: ./samples/tools/calculator
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  tool-weather:
+    build:
+      context: ./samples/tools/weather
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres_data:

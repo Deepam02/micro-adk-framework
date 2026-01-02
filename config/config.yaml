@@ -1,0 +1,131 @@
+# Micro ADK Framework Configuration
+# 
+# This file configures the agent runtime, database connection,
+# LiteLLM integration, and tool orchestration.
+#
+# Environment variables can override values using the format:
+# MICRO_ADK_<SECTION>__<KEY> (e.g., MICRO_ADK_DATABASE__HOST)
+
+# =============================================================================
+# Database Configuration
+# =============================================================================
+# PostgreSQL connection for session and tool invocation storage
+
+database:
+  host: postgres
+  port: 5432
+  database: micro_adk
+  user: postgres
+  password: postgres
+  pool_size: 5
+  max_overflow: 10
+
+# =============================================================================
+# LiteLLM Configuration
+# =============================================================================
+# All LLM calls go through LiteLLM for model abstraction
+
+litellm:
+  # Optional: Custom LiteLLM proxy URL
+  # If not set, uses direct API calls
+  base_url: null
+  
+  # API key (optional, usually set via environment variable)
+  api_key: null
+  
+  # Default model for agents that don't specify one
+  # Format: provider/model (e.g., gemini/gemini-2.0-flash, openai/gpt-4)
+  default_model: gemini/gemini-2.5-flash
+  
+  # Request timeout in seconds
+  timeout: 120
+  
+  # Max retries for failed requests
+  max_retries: 3
+
+# =============================================================================
+# Server Configuration
+# =============================================================================
+# FastAPI server settings for the agent runtime
+
+server:
+  host: 0.0.0.0
+  port: 8000
+  workers: 1
+  reload: false
+  
+  # CORS allowed origins
+  cors_origins:
+    - "*"
+
+# =============================================================================
+# Tool Orchestrator Configuration
+# =============================================================================
+# Kubernetes settings for deploying containerized tools
+
+orchestrator:
+  # Enable Kubernetes orchestration
+  enabled: false
+  
+  # Kubernetes namespace for tool deployments
+  namespace: micro-adk-tools
+  
+  # Set to true when running inside a Kubernetes cluster
+  in_cluster: false
+  
+  # Path to kubeconfig (null = use default)
+  kubeconfig_path: null
+  
+  # Deploy tools on first invocation
+  lazy_deploy: true
+  
+  # Health check interval in seconds
+  health_check_interval: 30
+  
+  # Default replica count
+  default_replicas: 1
+
+# =============================================================================
+# Tool Router Configuration
+# =============================================================================
+# HTTP client settings for invoking containerized tools
+
+router:
+  # Request timeout in seconds
+  timeout: 30
+  
+  # Max retries for failed requests
+  max_retries: 3
+  
+  # Delay between retries in seconds
+  retry_delay: 1.0
+  
+  # Circuit breaker settings
+  circuit_breaker_threshold: 5
+  circuit_breaker_timeout: 60
+  
+  # Service URL pattern for Docker Compose
+  # Use {tool_id} as placeholder for the tool's ID
+  service_url_pattern: "http://tool-{tool_id}:8080"
+  
+  # Explicit service URL mappings (take precedence over pattern)
+  # service_urls:
+  #   calculator: http://custom-calculator-host:8080
+  #   weather: http://custom-weather-host:9000
+
+# =============================================================================
+# Paths
+# =============================================================================
+
+# Directory containing agent definitions
+agents_dir: /app/agents
+
+# Path to the tool manifest YAML
+tools_manifest_path: /app/tools/manifest.yaml
+
+# =============================================================================
+# Logging
+# =============================================================================
+
+log_level: INFO
+log_format: json
