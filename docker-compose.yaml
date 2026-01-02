@@ -1,5 +1,11 @@
 # Docker Compose for Micro ADK Framework
-# Local development environment
+# Local development environment with proper component separation
+#
+# Architecture:
+#   - postgres:        Database for sessions, events, tool invocations
+#   - runtime:         Agent Runtime (FastAPI) - handles agent requests
+#   - tool-router:     Tool Router service - routes tool calls to containers
+#   - tool-*:          Tool containers - individual tool services
 #
 # Usage:
 #   docker-compose up -d                    # Start all services
@@ -31,8 +37,10 @@ services:
       retries: 5
 
   # ==========================================================================
-  # Agent Runtime
+  # Agent Runtime (API Layer)
   # ==========================================================================
+  # Handles agent requests, session management, and LLM interactions
+  # Communicates with Tool Router for tool invocations
   
   runtime:
     build:
@@ -56,6 +64,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      tool-router:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -63,17 +73,44 @@ services:
       retries: 3
 
   # ==========================================================================
-  # Sample Tools
+  # Tool Router (Data Plane)
+  # ==========================================================================
+  # Routes tool invocations to the appropriate tool containers
+  # Handles service discovery, retries, and health checking
+  
+  tool-router:
+    build:
+      context: .
+      dockerfile: Dockerfile.router
+    ports:
+      - "8083:8081"
+    environment:
+      - TOOLS_MANIFEST_PATH=/app/tools/manifest.yaml
+    volumes:
+      - ./tools:/app/tools:ro
+    depends_on:
+      - tool-calculator
+      - tool-weather
+      - tool-text_utils
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ==========================================================================
+  # Tool Services (One Container Per Tool)
   # ==========================================================================
   
   tool-calculator:
     build:
       context: ./samples/tools/calculator
       dockerfile: Dockerfile
-    ports:
-      - "8081:8080"
+    # Internal port only - accessed via tool-router
+    expose:
+      - "8080"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -82,10 +119,24 @@ services:
     build:
       context: ./samples/tools/weather
       dockerfile: Dockerfile
-    ports:
-      - "8082:8080"
+    # Internal port only - accessed via tool-router
+    expose:
+      - "8080"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  tool-text_utils:
+    build:
+      context: ./samples/tools/text_utils
+      dockerfile: Dockerfile
+    # Internal port only - accessed via tool-router
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 10s
       timeout: 5s
       retries: 3

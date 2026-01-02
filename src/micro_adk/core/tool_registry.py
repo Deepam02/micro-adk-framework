@@ -13,7 +13,12 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-from micro_adk.core.container_tool import ContainerTool, ContainerToolConfig, ContainerToolFactory
+from micro_adk.core.container_tool import (
+    ContainerTool, 
+    ContainerToolConfig, 
+    ContainerToolFactory,
+    RoutedContainerTool,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -167,37 +172,50 @@ class ToolRegistry:
     """Registry that manages tools and their container configurations.
     
     The registry loads tool definitions from manifests and creates
-    ContainerTool instances that can be used by agents.
+    ContainerTool or RoutedContainerTool instances that can be used by agents.
+    
+    The registry supports two modes:
+    - Direct mode: Tools call tool containers directly (embedded router)
+    - Routed mode: Tools call through a separate Tool Router service
     
     Example:
         ```python
+        # Direct mode (tools call containers directly)
         registry = ToolRegistry()
+        registry.load_manifest("./config/tool_manifest.yaml")
+        
+        # Routed mode (tools call through Tool Router)
+        registry = ToolRegistry(router_url="http://tool-router:8081")
         registry.load_manifest("./config/tool_manifest.yaml")
         
         # Get tools for an agent
         tools = registry.get_tools(["calculator", "weather_api"])
-        
-        agent = LlmAgent(
-            name="my_agent",
-            model=LiteLlm(model="openai/gpt-4o"),
-            tools=tools,
-        )
         ```
     """
     
     def __init__(
         self,
         service_resolver: Optional[Callable[[str], str]] = None,
+        router_url: Optional[str] = None,
     ):
         """Initialize the tool registry.
         
         Args:
             service_resolver: Optional function to resolve service names to URLs.
+            router_url: If provided, tools will route through this Tool Router 
+                        service instead of calling tool containers directly.
         """
         self._manifests: Dict[str, ToolManifest] = {}
         self._tool_entries: Dict[str, ToolManifestEntry] = {}
         self._factory = ContainerToolFactory(service_resolver=service_resolver)
         self._tools: Dict[str, ContainerTool] = {}
+        self._routed_tools: Dict[str, RoutedContainerTool] = {}
+        self._router_url = router_url
+        
+        if router_url:
+            logger.info(f"Tool Registry using Router at: {router_url}")
+        else:
+            logger.info("Tool Registry using direct tool invocation")
     
     def load_manifest(
         self,
@@ -240,16 +258,43 @@ class ToolRegistry:
         """Get a tool manifest entry by ID."""
         return self._tool_entries.get(tool_id)
     
-    def get_tool(self, tool_id: str) -> Optional[ContainerTool]:
-        """Get or create a ContainerTool by ID.
+    def get_tool(self, tool_id: str) -> Optional[Union[ContainerTool, RoutedContainerTool]]:
+        """Get or create a tool by ID.
+        
+        If router_url is configured, returns a RoutedContainerTool that calls
+        the Tool Router service. Otherwise, returns a direct ContainerTool.
         
         Args:
             tool_id: The tool ID to look up.
             
         Returns:
-            A ContainerTool instance, or None if not found.
+            A tool instance, or None if not found.
         """
-        # Check cache first
+        # If using router, check routed tools cache
+        if self._router_url:
+            if tool_id in self._routed_tools:
+                return self._routed_tools[tool_id]
+            
+            # Get the manifest entry
+            entry = self._tool_entries.get(tool_id)
+            if entry is None:
+                logger.warning(f"Tool not found in registry: {tool_id}")
+                return None
+            
+            # Create routed tool
+            tool = RoutedContainerTool(
+                tool_id=entry.tool_id,
+                name=entry.name,
+                description=entry.description,
+                router_url=self._router_url,
+                parameters=entry.parameters,
+                timeout=entry.timeout,
+            )
+            self._routed_tools[tool_id] = tool
+            logger.debug(f"Created RoutedContainerTool: {tool_id}")
+            return tool
+        
+        # Direct mode: check cache first
         if tool_id in self._tools:
             return self._tools[tool_id]
         
@@ -267,14 +312,14 @@ class ToolRegistry:
         logger.debug(f"Created ContainerTool: {tool_id}")
         return tool
     
-    def get_tools(self, tool_ids: List[str]) -> List[ContainerTool]:
+    def get_tools(self, tool_ids: List[str]) -> List[Union[ContainerTool, RoutedContainerTool]]:
         """Get multiple tools by their IDs.
         
         Args:
             tool_ids: List of tool IDs to look up.
             
         Returns:
-            List of ContainerTool instances (skips missing tools).
+            List of tool instances (skips missing tools).
         """
         tools = []
         for tool_id in tool_ids:
@@ -291,10 +336,20 @@ class ToolRegistry:
         """List all registered tool entries."""
         return list(self._tool_entries.values())
     
+    @property
+    def is_routed(self) -> bool:
+        """Check if this registry uses router-based tools."""
+        return self._router_url is not None
+    
     async def close(self) -> None:
         """Close all tool resources."""
         await self._factory.close_all()
         self._tools.clear()
+        
+        # Close routed tools
+        for tool in self._routed_tools.values():
+            await tool.close()
+        self._routed_tools.clear()
 
 
 def create_manifest_example() -> ToolManifest:

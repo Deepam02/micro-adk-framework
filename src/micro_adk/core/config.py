@@ -58,13 +58,19 @@ class ToolOrchestratorConfig(BaseModel):
 class ToolRouterConfig(BaseModel):
     """Tool router configuration."""
     
+    # External Tool Router service URL (when using separate router container)
+    router_service_url: Optional[str] = Field(
+        default=None,
+        description="URL of the standalone Tool Router service. If set, tools route through this service.",
+    )
+    
     timeout: int = Field(default=30, description="Request timeout in seconds")
     max_retries: int = Field(default=3, description="Max retries for failed requests")
     retry_delay: float = Field(default=1.0, description="Delay between retries in seconds")
     circuit_breaker_threshold: int = Field(default=5, description="Circuit breaker failure threshold")
     circuit_breaker_timeout: int = Field(default=60, description="Circuit breaker timeout in seconds")
     
-    # Service resolution
+    # Service resolution (used when NOT using router_service_url)
     # Pattern can include {tool_id} placeholder, e.g., "http://tool-{tool_id}:8080"
     service_url_pattern: Optional[str] = Field(
         default=None,

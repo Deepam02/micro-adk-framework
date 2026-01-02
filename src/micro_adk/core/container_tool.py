@@ -355,3 +355,164 @@ class ContainerToolFactory:
         for tool in self._tools.values():
             await tool.close()
         self._tools.clear()
+
+
+# =============================================================================
+# RoutedContainerTool - Routes through the Tool Router service
+# =============================================================================
+
+class RoutedContainerTool(BaseTool):
+    """A tool that routes invocations through the Tool Router service.
+    
+    This tool makes HTTP POST requests to the Tool Router's /route endpoint,
+    which then forwards the request to the appropriate tool container.
+    
+    This separates concerns:
+    - Agent Runtime: Handles agent logic and LLM calls
+    - Tool Router: Handles routing and communication with tool containers
+    - Tool Containers: Handle actual tool execution
+    
+    Example:
+        ```python
+        tool = RoutedContainerTool(
+            tool_id="calculator",
+            name="calculator",
+            description="Performs arithmetic calculations",
+            router_url="http://tool-router:8081",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "operation": {"type": "string"},
+                    "a": {"type": "number"},
+                    "b": {"type": "number"}
+                }
+            }
+        )
+        ```
+    """
+    
+    def __init__(
+        self,
+        tool_id: str,
+        name: str,
+        description: str,
+        router_url: str,
+        parameters: Dict[str, Any],
+        *,
+        timeout: float = 30.0,
+        http_client: Optional[httpx.AsyncClient] = None,
+    ):
+        """Initialize the RoutedContainerTool.
+        
+        Args:
+            tool_id: Unique identifier for the tool.
+            name: Display name of the tool.
+            description: Description of what the tool does.
+            router_url: URL of the Tool Router service.
+            parameters: JSON Schema for tool parameters.
+            timeout: Request timeout in seconds.
+            http_client: Optional pre-configured HTTP client.
+        """
+        super().__init__(
+            name=name,
+            description=description,
+        )
+        self._tool_id = tool_id
+        self._router_url = router_url.rstrip("/")
+        self._parameters = parameters
+        self._timeout = timeout
+        self._http_client = http_client
+        self._owns_client = http_client is None
+    
+    @property
+    def tool_id(self) -> str:
+        """Get the tool ID."""
+        return self._tool_id
+    
+    def _get_http_client(self) -> httpx.AsyncClient:
+        """Get or create the HTTP client."""
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(self._timeout),
+            )
+        return self._http_client
+    
+    @override
+    def _get_declaration(self) -> Optional[types.FunctionDeclaration]:
+        """Get the function declaration for LLM tool calling."""
+        return types.FunctionDeclaration(
+            name=self.name,
+            description=self.description,
+            parameters=self._parameters or {"type": "object", "properties": {}},
+        )
+    
+    @override
+    async def run_async(
+        self,
+        *,
+        args: Dict[str, Any],
+        tool_context: ToolContext,
+    ) -> Any:
+        """Execute the tool by calling the Tool Router service.
+        
+        Args:
+            args: The arguments passed by the LLM.
+            tool_context: The context for the tool invocation.
+            
+        Returns:
+            The result from the tool via the Router.
+        """
+        session_id = tool_context.session.id if tool_context.session else "unknown"
+        
+        # Build request for the Router
+        route_request = {
+            "tool_id": self._tool_id,
+            "args": args,
+            "session_id": session_id,
+            "context": {
+                "invocation_id": getattr(tool_context, 'invocation_id', None),
+            },
+        }
+        
+        route_url = f"{self._router_url}/route"
+        
+        logger.info(
+            f"Routing tool '{self.name}' through {route_url}",
+            extra={"tool_id": self._tool_id, "session_id": session_id},
+        )
+        
+        client = self._get_http_client()
+        try:
+            response = await client.post(route_url, json=route_request)
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            if not result.get("ok", True):
+                error = result.get("error", "Unknown error")
+                logger.error(f"Tool '{self.name}' failed: {error}")
+                return {"error": error}
+            
+            logger.info(
+                f"Tool '{self.name}' completed via router",
+                extra={"tool_id": self._tool_id, "duration_ms": result.get("duration_ms")},
+            )
+            return result.get("result")
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error from router: {e}")
+            return {"error": f"Router error: HTTP {e.response.status_code}"}
+            
+        except httpx.TimeoutException:
+            logger.error(f"Router timeout for tool '{self.name}'")
+            return {"error": f"Router timeout after {self._timeout}s"}
+            
+        except Exception as e:
+            logger.exception(f"Error routing tool '{self.name}'")
+            return {"error": str(e)}
+    
+    async def close(self) -> None:
+        """Close the HTTP client if we own it."""
+        if self._owns_client and self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None

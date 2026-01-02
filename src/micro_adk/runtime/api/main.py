@@ -76,9 +76,22 @@ async def lifespan(app: FastAPI):
     )
     await state.session_service.initialize()
     
-    # Initialize tool registry with service resolver
-    service_resolver = state.config.router.resolve_service_url
-    state.tool_registry = ToolRegistry(service_resolver=service_resolver)
+    # Initialize tool registry
+    # If router_service_url is configured, tools will route through the Tool Router
+    # Otherwise, they call tool containers directly
+    router_url = state.config.router.router_service_url
+    service_resolver = state.config.router.resolve_service_url if not router_url else None
+    
+    state.tool_registry = ToolRegistry(
+        service_resolver=service_resolver,
+        router_url=router_url,
+    )
+    
+    if router_url:
+        logger.info(f"Tool routing through: {router_url}")
+    else:
+        logger.info("Direct tool invocation (no router service)")
+    
     try:
         state.tool_registry.load_manifest(state.config.tools_manifest_path)
     except FileNotFoundError:

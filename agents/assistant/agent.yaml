@@ -21,6 +21,9 @@ instruction: |
   2. Weather information - Use the weather tool to get current weather
      conditions for any city.
   
+  3. Text utilities - Use the text_utils tool for text operations like
+     word count, character count, reverse, uppercase, lowercase, title case.
+  
   Always be friendly and helpful. When performing calculations or getting
   weather, explain what you're doing and present the results clearly.
 
@@ -28,6 +31,7 @@ instruction: |
 tools:
   - calculator
   - weather
+  - text_utils
 
 # Optional: Sub-agents for multi-agent workflows
 sub_agents: []

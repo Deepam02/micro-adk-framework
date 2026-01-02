@@ -88,9 +88,14 @@ orchestrator:
 # =============================================================================
 # Tool Router Configuration
 # =============================================================================
-# HTTP client settings for invoking containerized tools
+# Settings for routing tool invocations to containerized tools
 
 router:
+  # External Tool Router service URL
+  # If set, all tool calls route through this service (recommended for production)
+  # If null, the runtime calls tool containers directly (simpler for development)
+  router_service_url: http://tool-router:8081
+  
   # Request timeout in seconds
   timeout: 30
   
@@ -104,7 +109,7 @@ router:
   circuit_breaker_threshold: 5
   circuit_breaker_timeout: 60
   
-  # Service URL pattern for Docker Compose
+  # Service URL pattern (used only when router_service_url is null)
   # Use {tool_id} as placeholder for the tool's ID
   service_url_pattern: "http://tool-{tool_id}:8080"
   

@@ -82,3 +82,35 @@ tools:
       min_replicas: 1
       max_replicas: 3
       target_cpu_percent: 80
+  # =========================================================================
+  # Text Utils Tool
+  # =========================================================================
+  - tool_id: text_utils
+    name: text_utils
+    description: |
+      A text utility tool for common text operations.
+      Supports: word_count, char_count, reverse, uppercase, lowercase, title_case.
+    image: micro-adk/tool-text-utils:latest
+    port: 8080
+    health_check_path: /health
+    
+    schema:
+      operation:
+        type: string
+        description: "The operation: word_count, char_count, reverse, uppercase, lowercase, title_case"
+        enum: ["word_count", "char_count", "reverse", "uppercase", "lowercase", "title_case"]
+      text:
+        type: string
+        description: The text to operate on
+    
+    resources:
+      cpu_request: "50m"
+      cpu_limit: "200m"
+      memory_request: "64Mi"
+      memory_limit: "128Mi"
+    
+    autoscaling:
+      enabled: true
+      min_replicas: 1
+      max_replicas: 3
+      target_cpu_percent: 80

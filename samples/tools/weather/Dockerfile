@@ -2,8 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
-RUN pip install --no-cache-dir fastapi uvicorn pydantic
+# Install dependencies (added httpx for real API calls)
+RUN pip install --no-cache-dir fastapi uvicorn pydantic httpx
 
 # Copy application
 COPY main.py .

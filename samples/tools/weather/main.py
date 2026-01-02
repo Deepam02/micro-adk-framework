@@ -1,108 +1,86 @@
-"""Weather tool service.
-
-A mock weather tool that simulates fetching weather data.
-Demonstrates how to structure a tool that calls external APIs.
 """
-
+Weather Tool Service
+Uses WeatherAPI.com to fetch real weather data.
+"""
 from fastapi import FastAPI
-from pydantic import BaseModel, Field
-from typing import Any, Dict, Optional
-import logging
-import random
+from pydantic import BaseModel
+from typing import Dict, Any, Optional
+import httpx
+import os
 
-app = FastAPI(
-    title="Weather Tool",
-    description="A mock weather tool for Micro ADK",
-    version="1.0.0",
-)
+app = FastAPI(title="Weather Tool")
 
-logger = logging.getLogger(__name__)
+# API key from environment variable or fallback
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "6a205a738609454dbb655753260201")
+WEATHER_API_URL = "https://api.weatherapi.com/v1/current.json"
 
 
 class InvokeRequest(BaseModel):
-    """Request to invoke the weather tool."""
-    
-    args: Dict[str, Any] = Field(default_factory=dict)
+    """Standard tool invoke request."""
+    args: Dict[str, Any]
     context: Optional[Dict[str, Any]] = None
 
 
 class InvokeResponse(BaseModel):
-    """Response from the weather tool."""
-    
-    result: Any = None
+    """Standard tool invoke response."""
+    ok: bool = True
+    result: Optional[Any] = None
     error: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
 
 
-# Mock weather data
-MOCK_WEATHER = {
-    "new york": {"temp": 72, "condition": "Partly Cloudy", "humidity": 65},
-    "london": {"temp": 55, "condition": "Rainy", "humidity": 80},
-    "tokyo": {"temp": 68, "condition": "Sunny", "humidity": 50},
-    "paris": {"temp": 62, "condition": "Cloudy", "humidity": 70},
-    "sydney": {"temp": 78, "condition": "Sunny", "humidity": 45},
-}
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy", "tool": "weather"}
+async def get_weather(location: str) -> Dict[str, Any]:
+    """Fetch real weather data from WeatherAPI.com"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                WEATHER_API_URL,
+                params={"key": WEATHER_API_KEY, "q": location}
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            # Extract and simplify relevant data
+            return {
+                "location": data["location"]["name"],
+                "region": data["location"]["region"],
+                "country": data["location"]["country"],
+                "temperature_c": data["current"]["temp_c"],
+                "temperature_f": data["current"]["temp_f"],
+                "condition": data["current"]["condition"]["text"],
+                "humidity": data["current"]["humidity"],
+                "wind_kph": data["current"]["wind_kph"],
+                "wind_mph": data["current"]["wind_mph"],
+                "feels_like_c": data["current"]["feelslike_c"],
+                "feels_like_f": data["current"]["feelslike_f"]
+            }
+    except httpx.HTTPStatusError as e:
+        raise ValueError(f"Weather API error: {e.response.status_code}")
+    except Exception as e:
+        raise ValueError(f"Failed to fetch weather: {str(e)}")
 
 
 @app.post("/invoke", response_model=InvokeResponse)
-async def invoke(request: InvokeRequest) -> InvokeResponse:
-    """Invoke the weather tool.
-    
-    Args in request.args:
-        location: The city to get weather for
-        unit: Temperature unit (celsius or fahrenheit, default: fahrenheit)
-        
-    Returns:
-        Weather information for the location.
-    """
+async def invoke(request: InvokeRequest):
+    """Tool invocation endpoint."""
     try:
-        location = request.args.get("location", "").lower().strip()
-        unit = request.args.get("unit", "fahrenheit").lower()
+        args = request.args
+        location = args.get("location")
         
         if not location:
-            return InvokeResponse(error="Location is required")
+            raise ValueError("Location is required")
         
-        # Get mock weather or generate random
-        if location in MOCK_WEATHER:
-            weather = MOCK_WEATHER[location].copy()
-        else:
-            # Generate random weather for unknown locations
-            weather = {
-                "temp": random.randint(40, 90),
-                "condition": random.choice(["Sunny", "Cloudy", "Rainy", "Partly Cloudy"]),
-                "humidity": random.randint(30, 90),
-            }
+        result = await get_weather(location)
         
-        # Convert temperature if needed
-        temp = weather["temp"]
-        if unit == "celsius":
-            temp = round((temp - 32) * 5 / 9, 1)
-            temp_str = f"{temp}°C"
-        else:
-            temp_str = f"{temp}°F"
-        
-        return InvokeResponse(
-            result={
-                "location": location.title(),
-                "temperature": temp_str,
-                "condition": weather["condition"],
-                "humidity": f"{weather['humidity']}%",
-            },
-            metadata={
-                "source": "mock_weather_service",
-                "unit": unit,
-            }
-        )
+        return InvokeResponse(ok=True, result=result)
     
     except Exception as e:
-        logger.exception("Weather tool error")
-        return InvokeResponse(error=str(e))
+        return InvokeResponse(ok=False, error=str(e))
+
+
+@app.get("/health")
+async def health():
+    """Health check endpoint."""
+    return {"status": "healthy"}
 
 
 if __name__ == "__main__":
