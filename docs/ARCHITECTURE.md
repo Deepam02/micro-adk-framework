@@ -41,27 +41,25 @@ This framework leverages **Google Agent Development Kit (ADK)** as its core agen
         │ gemini-2.5    │  │ ┌───────────┐ │  │ ├─ sessions   │
         │ gpt-4         │  │ │ LlmAgent  │ │  │ ├─ events     │
         │ claude-3      │  │ └───────────┘ │  │ └─ tool_invoc │
-        └───────────────┘  └───────────────┘  └───────────────┘
-                                    │
-                                    │ Tool Calls
-                                    ▼
+        │ ollama        │  └───────────────┘  └───────────────┘
+        └───────────────┘          │
+                                   │ Tool Calls
+                                   ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Tool Registry & Router                               │
+│                            Tool Router                                       │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐  │
-│  │  Tool Registry  │  │  ContainerTool  │  │  Service Resolver           │  │
-│  │  (Manifest→Tool)│  │  (ADK BaseTool) │  │  (URL Pattern/Mapping)      │  │
+│  │  POST /route    │  │ Service Resolver│  │  Health Checks & Retries    │  │
+│  │  (tool_id,args) │  │  (Manifest→URL) │  │                             │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     │ HTTP /invoke
                                     ▼
-┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐
-│   tool-calculator    │  │    tool-weather      │  │    tool-custom       │
-│   (Container)        │  │    (Container)       │  │    (Container)       │
-│                      │  │                      │  │                      │
-│   POST /invoke       │  │    POST /invoke      │  │    POST /invoke      │
-│   GET /health        │  │    GET /health       │  │    GET /health       │
-└──────────────────────┘  └──────────────────────┘  └──────────────────────┘
+┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐
+│  tool-calculator  │  │   tool-weather    │  │  tool-text_utils  │
+│   (Container)     │  │   (Container)     │  │   (Container)     │
+│   POST /invoke    │  │   POST /invoke    │  │   POST /invoke    │
+└───────────────────┘  └───────────────────┘  └───────────────────┘
 ```
 
 ## Key Design Decisions
@@ -215,10 +213,9 @@ See [docs/ADD_TOOL.md](./ADD_TOOL.md)
 
 ### Current Limitations
 
-1. **Tool invocations table empty**: The plugin logs to events, but we should also populate `tool_invocations` table for easier querying
-2. **No streaming in HTTP API**: ADK supports streaming but our REST endpoint returns complete response
-3. **Single agent per request**: No multi-agent orchestration yet
-4. **No tool result caching**: Same tool calls aren't cached
+1. **No streaming in HTTP API**: ADK supports streaming but our REST endpoint returns complete response
+2. **Single agent per request**: No multi-agent orchestration yet
+3. **No tool result caching**: Same tool calls aren't cached
 
 ### Recommended Improvements
 
@@ -230,23 +227,14 @@ See [docs/ADD_TOOL.md](./ADD_TOOL.md)
            yield f"data: {event.json()}\n\n"
    ```
 
-2. **Populate tool_invocations table**:
-   ```python
-   # In ToolInvocationLoggerPlugin
-   async def after_tool_callback(self, ...):
-       await self.db.execute(
-           "INSERT INTO tool_invocations ..."
-       )
-   ```
-
-3. **Add tool result caching**:
+2. **Add tool result caching**:
    ```python
    @cached(ttl=300)
    async def invoke_tool(tool_id, args):
        ...
    ```
 
-4. **Multi-agent support**:
+3. **Multi-agent support**:
    ```python
    # Use ADK's sub_agents feature
    root_agent = LlmAgent(
@@ -255,7 +243,7 @@ See [docs/ADD_TOOL.md](./ADD_TOOL.md)
    )
    ```
 
-5. **Observability**:
+4. **Observability**:
    - OpenTelemetry tracing
    - Prometheus metrics
    - Structured logging with correlation IDs
