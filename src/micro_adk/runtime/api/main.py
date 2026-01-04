@@ -203,12 +203,24 @@ def register_routes(app: FastAPI) -> None:
     # =========================================================================
     
     @app.get("/agents", response_model=ListAgentsResponse, tags=["Agents"])
-    async def list_agents() -> ListAgentsResponse:
-        """List all available agents."""
+    async def list_agents(refresh: bool = True) -> ListAgentsResponse:
+        """List all available agents.
+        
+        Args:
+            refresh: If True (default), automatically discovers new agents from disk.
+                     Set to False to skip discovery and return cached agents only.
+        """
         state = get_state()
         
         if not state.agent_loader:
             return ListAgentsResponse(agents=[])
+        
+        # Auto-refresh: discover new agents before listing
+        if refresh:
+            state.agent_loader.reload_agents()
+            # Clear runner cache to ensure new agents can be used
+            if state.runner_factory:
+                state.runner_factory._runners.clear()
         
         agents = state.agent_loader.list_agents()
         return ListAgentsResponse(agents=agents)

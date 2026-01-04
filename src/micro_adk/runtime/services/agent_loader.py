@@ -350,9 +350,3 @@ class AgentLoader:
         except Exception as e:
             logger.error(f"Failed to load callback {callback_path}: {e}")
             return None
-    
-    def reload_agents(self) -> None:
-        """Reload all agent configurations from disk."""
-        self._agents.clear()
-        self._agent_instances.clear()
-        self._discover_agents()
