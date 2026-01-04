@@ -307,7 +307,18 @@ def register_routes(app: FastAPI) -> None:
                 agent_loader=state.agent_loader,
             )
         except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e))
+            # Agent not found - try reloading agents first (auto-discovery)
+            state.agent_loader.reload_agents()
+            state.runner_factory._runners.clear()
+            
+            # Try again after reload
+            try:
+                runner = await state.runner_factory.get_runner(
+                    agent_id=agent_id,
+                    agent_loader=state.agent_loader,
+                )
+            except ValueError:
+                raise HTTPException(status_code=404, detail=str(e))
         
         if stream:
             # Return streaming response
